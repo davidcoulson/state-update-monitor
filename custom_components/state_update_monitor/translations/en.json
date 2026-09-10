@@ -1,0 +1,34 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "State Update Monitor",
+        "description": "Track which entities generate the most state_changed events.",
+        "data": {
+          "window_seconds": "Sliding window (seconds)",
+          "top_n": "Number of entities to rank",
+          "update_interval": "Sensor refresh interval (seconds)",
+          "exclude_domains": "Exclude domains (comma-separated, e.g. persistent_notification)",
+          "include_filter": "Only include entities matching (comma-separated substrings, blank = all)"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "State Update Monitor is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "State Update Monitor Options",
+        "data": {
+          "window_seconds": "Sliding window (seconds)",
+          "top_n": "Number of entities to rank",
+          "update_interval": "Sensor refresh interval (seconds)",
+          "exclude_domains": "Exclude domains (comma-separated)",
+          "include_filter": "Only include entities matching (comma-separated substrings)"
+        }
+      }
+    }
+  }
+}

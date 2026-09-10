@@ -1,0 +1,9 @@
+{
+  "domain": "state_update_monitor",
+  "name": "State Update Monitor",
+  "codeowners": [],
+  "config_flow": true,
+  "documentation": "https://www.home-assistant.io/integrations/sensor/",
+  "iot_class": "local_push",
+  "version": "2.0.0"
+}
