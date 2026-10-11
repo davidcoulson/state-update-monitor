@@ -1,5 +1,12 @@
 # State Update Monitor
 
+## TL;DR
+
+- **Find the entities flooding Home Assistant with updates.** It counts state changes per entity over the last few minutes and ranks the busiest ones.
+- **Two sensors:** the total update rate (graph it, or alert on spikes) and the single busiest entity, with the full top list as an attribute.
+- **Useful when Home Assistant feels sluggish**, the database grows fast, or Node-RED is busy, and you want to know which sensor is to blame.
+- **Runs inside Home Assistant**, with no tokens or extra connections, and is set up entirely in the UI.
+
 A custom component that watches Home Assistant's `state_changed` event
 bus directly (no external WebSocket connection needed, since it runs
 inside HA) and tracks which entities are generating the most updates
