@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import pytest
+from homeassistant.components.sensor import SensorStateClass
 from homeassistant.core import Event, HomeAssistant
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
@@ -137,3 +138,11 @@ async def test_monitor_events_are_excluded_by_registry_identity(platform, rename
         await hass.async_block_till_done()
         await refresh(None)
         assert collector.get_stats(15)["total_events"] == 0
+
+
+@pytest.mark.asyncio
+async def test_total_rate_supports_measurement_statistics(platform):
+    """The changing rate opts into min/max/mean sensor statistics."""
+    _, entities, _ = platform
+    assert entities[0].state_class is SensorStateClass.MEASUREMENT
+    assert entities[0].native_unit_of_measurement == "events/min"

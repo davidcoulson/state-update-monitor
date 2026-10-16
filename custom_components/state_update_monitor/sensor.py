@@ -26,7 +26,7 @@ from collections import Counter, deque
 from collections.abc import Callable
 from datetime import timedelta
 
-from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.sensor import SensorEntity, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EVENT_HOMEASSISTANT_STOP, EVENT_STATE_CHANGED
 from homeassistant.core import Event, HomeAssistant, callback
@@ -219,6 +219,7 @@ class StateUpdateTotalRateSensor(StateUpdateSensor):
 
     _attr_name = "State Update Monitor Total Rate"
     _attr_native_unit_of_measurement = "events/min"
+    _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_icon = "mdi:pulse"
     _attr_should_poll = False
 
