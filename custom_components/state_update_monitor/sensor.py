@@ -30,6 +30,7 @@ from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EVENT_HOMEASSISTANT_STOP, EVENT_STATE_CHANGED
 from homeassistant.core import Event, HomeAssistant, callback
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_time_interval
@@ -64,11 +65,14 @@ class StateChangeCollector:
         window_seconds: int,
         exclude_domains: list[str],
         include_filter: list[str],
+        entry_id: str,
     ) -> None:
         self.hass = hass
         self.window_seconds = window_seconds
         self.exclude_domains = set(exclude_domains)
         self.include_filter = [f.lower() for f in include_filter]
+        self._entity_registry = er.async_get(hass)
+        self._own_unique_ids = (f"{entry_id}_total_rate", f"{entry_id}_busiest_entity")
         self._events: deque[tuple[float, str]] = deque()
         self._remove_listener = None
         self._subscribers: list[Callable[[dict], None]] = []
@@ -99,6 +103,12 @@ class StateChangeCollector:
         self._prune()
         entity_id = event.data.get("entity_id")
         if not entity_id:
+            return
+        if any(
+            entity_id
+            == self._entity_registry.async_get_entity_id("sensor", DOMAIN, unique_id)
+            for unique_id in self._own_unique_ids
+        ):
             return
         domain = entity_id.split(".", 1)[0]
         if domain in self.exclude_domains:
@@ -149,7 +159,9 @@ async def async_setup_entry(
     exclude_domains = _parse_list(config.get(CONF_EXCLUDE_DOMAINS, ""))
     include_filter = _parse_list(config.get(CONF_INCLUDE_FILTER, ""))
 
-    collector = StateChangeCollector(hass, window_seconds, exclude_domains, include_filter)
+    collector = StateChangeCollector(
+        hass, window_seconds, exclude_domains, include_filter, entry.entry_id
+    )
     collector.start()
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = collector
 

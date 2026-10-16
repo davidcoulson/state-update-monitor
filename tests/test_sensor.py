@@ -5,6 +5,8 @@ from unittest.mock import Mock, patch
 
 import pytest
 from homeassistant.core import Event, HomeAssistant
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 
 from custom_components.state_update_monitor import sensor
 from custom_components.state_update_monitor.const import DOMAIN
@@ -14,6 +16,9 @@ from custom_components.state_update_monitor.const import DOMAIN
 async def platform(tmp_path):
     """Set up the platform with a local HA event loop and a captured timer."""
     hass = HomeAssistant(str(tmp_path))
+    dr.async_setup(hass)
+    await dr.async_load(hass, load_empty=True)
+    await er.async_load(hass, load_empty=True)
     unload = []
     entry = SimpleNamespace(
         entry_id="test_entry",
@@ -99,3 +104,36 @@ async def test_refresh_computes_one_shared_snapshot(platform):
         == entities[1].extra_state_attributes["total_events_in_window"]
     )
 
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("renamed", [False, True])
+async def test_monitor_events_are_excluded_by_registry_identity(platform, renamed):
+    """Own events stay excluded after renames, while other sensors still count."""
+    hass, entities, refresh = platform
+    registry = er.async_get(hass)
+    own_ids = []
+    for entity in entities:
+        registered = registry.async_get_or_create(
+            "sensor", DOMAIN, entity.unique_id, suggested_object_id=entity.name
+        )
+        own_ids.append(registered.entity_id)
+    if renamed:
+        for index, entity_id in enumerate(own_ids):
+            own_ids[index] = registry.async_update_entity(
+                entity_id, new_entity_id=f"sensor.renamed_monitor_{index}"
+            ).entity_id
+    collector = hass.data[DOMAIN]["test_entry"]
+    with patch.object(sensor.time, "monotonic", return_value=0):
+        for entity_id in own_ids + ["sensor.external"]:
+            hass.states.async_set(entity_id, "1")
+        await hass.async_block_till_done()
+        stats = collector.get_stats(15)
+    assert stats["total_events"] == 1
+    assert stats["top_entities"][0]["entity_id"] == "sensor.external"
+    # Even continued changes of the monitor's attributes cannot sustain activity.
+    with patch.object(sensor.time, "monotonic", return_value=11):
+        for entity_id in own_ids:
+            hass.states.async_set(entity_id, "1", {"total_events_in_window": 1})
+        await hass.async_block_till_done()
+        await refresh(None)
+        assert collector.get_stats(15)["total_events"] == 0
