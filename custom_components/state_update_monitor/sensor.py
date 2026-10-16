@@ -23,6 +23,7 @@ from __future__ import annotations
 import logging
 import time
 from collections import Counter, deque
+from collections.abc import Callable
 from datetime import timedelta
 
 from homeassistant.components.sensor import SensorEntity
@@ -70,6 +71,18 @@ class StateChangeCollector:
         self.include_filter = [f.lower() for f in include_filter]
         self._events: deque[tuple[float, str]] = deque()
         self._remove_listener = None
+        self._subscribers: list[Callable[[dict], None]] = []
+
+    def async_subscribe(self, update: Callable[[dict], None]) -> Callable[[], None]:
+        """Subscribe an added entity to shared refresh snapshots."""
+        self._subscribers.append(update)
+        return lambda: self._subscribers.remove(update)
+
+    def async_refresh(self, top_n: int) -> None:
+        """Prune and publish one snapshot, even with no added entities."""
+        stats = self.get_stats(top_n)
+        for update in tuple(self._subscribers):
+            update(stats)
 
     def start(self) -> None:
         self._remove_listener = self.hass.bus.async_listen(
@@ -83,6 +96,7 @@ class StateChangeCollector:
 
     @callback
     def _handle_event(self, event: Event) -> None:
+        self._prune()
         entity_id = event.data.get("entity_id")
         if not entity_id:
             return
@@ -163,8 +177,7 @@ async def async_setup_entry(
     async_add_entities([total_rate_sensor, top_entity_sensor])
 
     async def _async_refresh(_now) -> None:
-        total_rate_sensor.async_schedule_update_ha_state(True)
-        top_entity_sensor.async_schedule_update_ha_state(True)
+        collector.async_refresh(top_n)
 
     remove_interval = async_track_time_interval(
         hass, _async_refresh, timedelta(seconds=update_interval)
@@ -172,7 +185,24 @@ async def async_setup_entry(
     entry.async_on_unload(remove_interval)
 
 
-class StateUpdateTotalRateSensor(SensorEntity):
+class StateUpdateSensor(SensorEntity):
+    """Subscribe to refreshes only while the entity is added to HA."""
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self.async_on_remove(self._collector.async_subscribe(self._handle_refresh))
+        await self.async_update()
+
+    @callback
+    def _handle_refresh(self, stats: dict) -> None:
+        self._update_stats(stats)
+        self.async_write_ha_state()
+
+    async def async_update(self) -> None:
+        self._update_stats(self._collector.get_stats(self._top_n))
+
+
+class StateUpdateTotalRateSensor(StateUpdateSensor):
     """Total state-change events per minute, system-wide, over the window."""
 
     _attr_name = "State Update Monitor Total Rate"
@@ -196,8 +226,7 @@ class StateUpdateTotalRateSensor(SensorEntity):
         self._attr_native_value: float = 0
         self._attr_extra_state_attributes: dict = {}
 
-    async def async_update(self) -> None:
-        stats = self._collector.get_stats(self._top_n)
+    def _update_stats(self, stats: dict) -> None:
         self._attr_native_value = stats["total_per_minute"]
         self._attr_extra_state_attributes = {
             "window_seconds": self._window_seconds,
@@ -206,7 +235,7 @@ class StateUpdateTotalRateSensor(SensorEntity):
         }
 
 
-class StateUpdateTopEntitySensor(SensorEntity):
+class StateUpdateTopEntitySensor(StateUpdateSensor):
     """Current busiest entity_id, with a ranked top-N list as an attribute."""
 
     _attr_name = "State Update Monitor Busiest Entity"
@@ -229,8 +258,7 @@ class StateUpdateTopEntitySensor(SensorEntity):
         self._attr_native_value: str | None = None
         self._attr_extra_state_attributes: dict = {}
 
-    async def async_update(self) -> None:
-        stats = self._collector.get_stats(self._top_n)
+    def _update_stats(self, stats: dict) -> None:
         top = stats["top_entities"]
         self._attr_native_value = top[0]["entity_id"] if top else "none"
         self._attr_extra_state_attributes = {
